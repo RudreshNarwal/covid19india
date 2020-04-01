@@ -1,95 +1,82 @@
+import 'package:firebase_analytics/firebase_analytics.dart';
+import 'package:firebase_analytics/observer.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_webview_plugin/flutter_webview_plugin.dart';
-import 'package:location/location.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class MyHomePage extends StatefulWidget {
-  MyHomePage({Key key, this.title}) : super(key: key);
-
+    MyHomePage({Key key, this.title, @required this.analytics, @required this.observer})
+      : super(key: key);
   final String title;
+final FirebaseAnalytics analytics;
+  final FirebaseAnalyticsObserver observer;
 
   @override
-  _MyHomePageState createState() => _MyHomePageState();
+  _MyHomePageState createState() => _MyHomePageState(analytics, observer);
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  // final Completer<WebViewController> _controller =
-  //     Completer<WebViewController>();
 
-  final Location location = new Location();
-  PermissionStatus _permissionGranted;
+  _MyHomePageState(this.analytics, this.observer);
 
-  // num _stackToView = 1;
+final dateTime = DateTime.now();
+var firestore = Firestore.instance;
 
-  // void _handleLoad(String value) {
-  //   setState(() {
-  //     _stackToView = 0;
-  //   });
-  // }
+final FirebaseAnalyticsObserver observer;
+  final FirebaseAnalytics analytics;
+ String mobileNumber;
+  var deviceId;
 
-  _checkPermissions() async {
-    PermissionStatus permissionGrantedResult = await location.hasPermission();
-    setState(() {
-      _permissionGranted = permissionGrantedResult;
-    });
+
+
+  Future<void> _sendAnalyticsEvent() async {
+    await analytics.logEvent(
+      name: 'Notification Received : $mobileNumber ',
+      parameters: <String, dynamic>{
+        'string': 'id: $mobileNumber',
+        'bool': true,
+      },
+    );
   }
 
-  _requestPermission() async {
-    if (_permissionGranted != PermissionStatus.GRANTED) {
-      PermissionStatus permissionRequestedResult =
-          await location.requestPermission();
-      setState(() {
-        _permissionGranted = permissionRequestedResult;
-      });
-      if (permissionRequestedResult != PermissionStatus.GRANTED) {
-        return;
-      }
-    }
-    _checkService();
-    _requestService();
-  }
 
-  bool _serviceEnabled;
-
-  _checkService() async {
-    bool serviceEnabledResult = await location.serviceEnabled();
-    setState(() {
-      _serviceEnabled = serviceEnabledResult;
-    });
-  }
-
-  _requestService() async {
-    if (_serviceEnabled == null || !_serviceEnabled) {
-      bool serviceRequestedResult = await location.requestService();
-      setState(() {
-        _serviceEnabled = serviceRequestedResult;
-      });
-      if (!serviceRequestedResult) {
-        return;
-      }
+  Future<bool> setData() async {
+    final snapShot = await Firestore.instance.collection('posts').document("$deviceId").get();
+    if(snapShot.exists){
+      return false;
+    }else{
+      Firestore.instance.collection('userData').document("$deviceId")
+         .setData({ 'mobile': '$mobileNumber', deviceId: '$deviceId', 'dateTime': '$dateTime' });
+         return true;
     }
   }
 
   @override
   void initState() {
     super.initState();
-    _checkPermissions();
-    _requestPermission();
     FirebaseMessaging firebaseMessaging = new FirebaseMessaging();
     firebaseMessaging.configure(
       onMessage: (Map<String, dynamic> message) async {
         print('onMessage called: $message');
+        _sendAnalyticsEvent();
       },
       onResume: (Map<String, dynamic> message) async {
         print('onResume called: $message');
+        _sendAnalyticsEvent();
       },
       onLaunch: (Map<String, dynamic> message) async {
         print('onLaunch called: $message');
+        _sendAnalyticsEvent();
       },
     );
     firebaseMessaging.getToken().then((token) {
       print('FCM Token: $token');
+      setState(() {
+        deviceId = token;
+      });
     });
+     setData();
   }
 
   @override
